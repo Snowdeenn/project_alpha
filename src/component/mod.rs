@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use num_traits::Num;
 
 pub struct Player;
@@ -13,3 +15,13 @@ pub struct Velocity<T: Num> {
     pub(crate) dx: T,
     pub(crate) dy: T,
 }
+
+#[derive(Debug, PartialEq, PartialOrd)]
+pub enum DashState {
+    Idle,
+    Dashing(Duration),
+    Cooldown(Duration),
+}
+#[derive(Debug, PartialEq)]
+pub struct Dash(pub DashState);
+

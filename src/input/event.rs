@@ -1,6 +1,6 @@
 use raylib::math::Vector2;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum InputEvent {
     Dash,
     Attack,
