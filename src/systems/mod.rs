@@ -1,10 +1,12 @@
 use std::time::Duration;
 
 use crate::input::event::{InputEvent, InputQueue, InputState};
+use crate::renderer::CameraTarget;
 use crate::renderer::commands::DrawCommand;
 
 use crate::{component::*, renderer::RenderQueue};
 use legion::*;
+use num_traits::ToPrimitive;
 use raylib::prelude::*;
 
 const ACCEL: f64 = 1500.0;
@@ -58,9 +60,9 @@ pub fn dash(
     let new_state = match dash.0 {
         DashState::Idle => {
             if queue.0.contains(&InputEvent::Dash) {
-                velo.dx *= 4.0;
-                velo.dy *= 4.0;
-                DashState::Dashing(Duration::from_millis(2))
+                velo.dx *= 7.0;
+                velo.dy *= 7.0;
+                DashState::Dashing(Duration::from_millis(25))
             } else {
                 DashState::Idle
             }
@@ -69,7 +71,7 @@ pub fn dash(
         DashState::Dashing(d) => {
             let remaining = d.saturating_sub(*delta_time);
             if remaining.is_zero() {
-                DashState::Cooldown(Duration::from_secs(3))
+                DashState::Cooldown(Duration::from_secs(2))
             } else {
                 DashState::Dashing(remaining)
             }
@@ -85,4 +87,11 @@ pub fn dash(
         }
     };
     dash.0 = new_state;
+}
+
+#[system(for_each)]
+#[filter(component::<Player>())]
+pub fn update_camera(pos: &Position<f64>, #[resource] target_pos: &mut CameraTarget) {
+    target_pos.pos.x = pos.x.to_f32().unwrap_or_default();
+    target_pos.pos.y = pos.y.to_f32().unwrap_or_default();
 }

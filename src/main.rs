@@ -3,6 +3,7 @@ mod input;
 mod renderer;
 mod systems;
 
+use core::f64;
 use std::time::{Duration, Instant};
 
 use legion::*;
@@ -14,19 +15,19 @@ use crate::{
         InputReader,
         event::{InputQueue, InputState},
     },
-    renderer::{RenderQueue, Renderer},
+    renderer::{CameraTarget, RenderQueue, Renderer},
     systems::{
-        dash_system, friction_system, render_player_system, update_position_system,
-        update_velocity_system,
+        dash_system, friction_system, render_player_system, update_camera_system,
+        update_position_system, update_velocity_system,
     },
 };
 
 fn main() {
-    let mut renderer: Renderer = Renderer::new(800, 600, "Project Alpha");
-    let mut word: World = World::default();
+    let mut resources = Resources::default();
+    let mut renderer: Renderer = Renderer::new("Project Alpha", &resources);
+    let mut world: World = World::default();
     let input_reader: InputReader = InputReader;
 
-    let mut resources = Resources::default();
     resources.insert(Duration::new(0, 0));
     resources.insert(RenderQueue(vec![]));
     resources.insert(InputQueue(vec![]));
@@ -40,17 +41,33 @@ fn main() {
         .add_system(update_velocity_system())
         .add_system(dash_system())
         .add_system(update_position_system())
+        .add_system(update_camera_system())
         .add_system(render_player_system())
         .build();
 
     let mut last_time = Instant::now();
 
-    let _entity_1: Entity = word.push((
+    let _entity_1: Entity = world.push((
         Player,
-        Position { x: 400.0, y: 300.0 },
+        Position {
+            x: renderer.rl.get_screen_width() as f64 / 2.0,
+            y: renderer.rl.get_screen_height() as f64 / 2.0,
+        },
         Velocity { dx: 0.0, dy: 0.0 },
         Dash(component::DashState::Idle),
     ));
+
+    let _entity_temp = world.push((Position { x: 0.0, y: 0.0 },));
+
+    let mut query = <&Position<f64>>::query().filter(component::<Player>());
+    for pos in query.iter(&world) {
+        resources.insert(CameraTarget {
+            pos: Vector2 {
+                x: pos.x as f32,
+                y: pos.y as f32,
+            },
+        });
+    }
 
     while !renderer.rl.window_should_close() {
         let current_time: Instant = Instant::now();
@@ -61,7 +78,7 @@ fn main() {
         }
 
         input_reader.update(&renderer.rl, &mut resources);
-        schedule.execute(&mut word, &mut resources);
+        schedule.execute(&mut world, &mut resources);
         renderer.render_frame(&mut resources);
 
         // fin de frame — vider les queues
