@@ -25,3 +25,8 @@ pub enum DashState {
 #[derive(Debug, PartialEq)]
 pub struct Dash(pub DashState);
 
+#[derive(Debug)]
+pub struct Collider {
+    pub w: f64,
+    pub h: f64,
+}

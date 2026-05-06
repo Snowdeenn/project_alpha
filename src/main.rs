@@ -2,6 +2,7 @@ mod component;
 mod input;
 mod renderer;
 mod systems;
+mod helper;
 
 use core::f64;
 use std::time::{Duration, Instant};
@@ -10,15 +11,14 @@ use legion::*;
 use raylib::math::Vector2;
 
 use crate::{
-    component::{Dash, Player, Position, Velocity},
+    component::{Collider, Dash, Player, Position, Velocity},
     input::{
         InputReader,
         event::{InputQueue, InputState},
     },
     renderer::{CameraTarget, RenderQueue, Renderer},
     systems::{
-        dash_system, friction_system, render_player_system, update_camera_system,
-        update_position_system, update_velocity_system,
+        collide_arena_system, collide_system, dash_system, friction_system, render_oponent_system, render_player_system, update_camera_system, update_position_system, update_velocity_system
     },
 };
 
@@ -41,8 +41,11 @@ fn main() {
         .add_system(update_velocity_system())
         .add_system(dash_system())
         .add_system(update_position_system())
+        .add_system(collide_system())
+        .add_system(collide_arena_system())
         .add_system(update_camera_system())
         .add_system(render_player_system())
+        .add_system(render_oponent_system())
         .build();
 
     let mut last_time = Instant::now();
@@ -55,9 +58,10 @@ fn main() {
         },
         Velocity { dx: 0.0, dy: 0.0 },
         Dash(component::DashState::Idle),
+        Collider { w: 40.0, h: 40.0 },
     ));
 
-    let _entity_temp = world.push((Position { x: 0.0, y: 0.0 },));
+    let _entity_temp = world.push((Position { x: 1920.0, y: 1080.0 }, Collider { w: 40.0, h: 40.0 }));
 
     let mut query = <&Position<f64>>::query().filter(component::<Player>());
     for pos in query.iter(&world) {
