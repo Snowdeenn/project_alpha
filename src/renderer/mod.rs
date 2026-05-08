@@ -1,6 +1,6 @@
 pub mod commands;
 
-use crate::renderer::commands::DrawCommand;
+use crate::{helper::PlayerPos, renderer::commands::DrawCommand};
 use legion::Resources;
 use raylib::prelude::*;
 
@@ -26,9 +26,12 @@ impl Renderer {
             .build();
 
         let target = resources
-            .get::<CameraTarget>()
-            .map(|t| t.pos.clone())
-            .unwrap_or_default();
+            .get::<PlayerPos>()
+            .map(|t| Vector2 {
+                x: t.x as f32,
+                y: t.y as f32,
+            })
+            .unwrap_or(Vector2::zero());
 
         let cam = Camera2D {
             offset: Vector2::zero(),
@@ -38,17 +41,23 @@ impl Renderer {
         };
 
         rl.set_target_fps(60);
-        Renderer { rl, thread, cam, screen_w: SCREEN_W, screen_h: SCREEN_H }
+        Renderer {
+            rl,
+            thread,
+            cam,
+            screen_w: SCREEN_W,
+            screen_h: SCREEN_H,
+        }
     }
 
     pub fn render_frame(&mut self, resources: &mut Resources) {
-        if let Some(target) = resources.get::<CameraTarget>() {
+        if let Some(target) = resources.get::<PlayerPos>() {
             self.cam.target = Vector2 {
-                x: target.pos.x,
-                y: target.pos.y,
+                x: target.x as f32,
+                y: target.y as f32,
             };
             self.cam.offset = Vector2 {
-                x: self.screen_w as f32/ 2.0,
+                x: self.screen_w as f32 / 2.0,
                 y: self.screen_h as f32 / 2.0,
             };
         }
@@ -77,8 +86,4 @@ impl Renderer {
             q.0.clear();
         }
     }
-}
-
-pub struct CameraTarget {
-    pub pos: Vector2,
 }
