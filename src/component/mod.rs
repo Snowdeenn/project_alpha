@@ -3,6 +3,7 @@ use std::time::Duration;
 use num_traits::Num;
 
 pub struct Player;
+pub struct IA;
 
 #[derive(Debug, Default)]
 pub struct Position<T: Num> {

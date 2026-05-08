@@ -1,3 +1,5 @@
+use core::f64;
+
 use legion::EntityStore;
 use legion::{Entity, world::SubWorld};
 
@@ -12,6 +14,12 @@ pub struct Resolution {
     pub dir_x: f64,
     pub dir_y: f64,
     pub axis: bool,
+}
+
+#[derive(Debug)]
+pub struct PlayerPos {
+    pub x: f64,
+    pub y: f64,
 }
 
 pub fn aabb_overlap(
