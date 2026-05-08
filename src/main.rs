@@ -61,7 +61,7 @@ fn main() {
         Collider { w: 40.0, h: 40.0 },
     ));
 
-    let _entity_temp = world.push((Position { x: 1920.0, y: 1080.0 }, Collider { w: 40.0, h: 40.0 }));
+    let _entity_temp = world.push((Position { x: 800.0, y: 600.0 }, Collider { w: 40.0, h: 40.0 }));
 
     let mut query = <&Position<f64>>::query().filter(component::<Player>());
     for pos in query.iter(&world) {

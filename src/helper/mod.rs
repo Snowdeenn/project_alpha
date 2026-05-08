@@ -1,6 +1,5 @@
 use legion::EntityStore;
 use legion::{Entity, world::SubWorld};
-use num_traits::abs;
 
 use crate::component::{Collider, Position, Velocity};
 
@@ -36,21 +35,26 @@ pub fn aabb_overlap(
     }
 }
 
+const MIN_BOUNCE: f64 = 50.0;
+
 pub fn apply_resolution(world: &mut SubWorld, res: &Resolution) {
+    let epsilon = 0.2;
+
+
     if let Ok(mut entry_a) = world.entry_mut(res.ent_a) {
         if res.axis {
             if let Ok(pos) = entry_a.get_component_mut::<Position<f64>>() {
-                pos.x += res.overlap_x / 2.0 * res.dir_x;
+                pos.x += (res.overlap_x / 2.0 + epsilon) * res.dir_x;
             }
             if let Ok(velo) = entry_a.get_component_mut::<Velocity<f64>>() {
-                velo.dx *= -1.0;
+                velo.dx = velo.dx.abs().max(MIN_BOUNCE) * res.dir_x;
             }
         } else {
             if let Ok(pos) = entry_a.get_component_mut::<Position<f64>>() {
-                pos.y += res.overlap_y / 2.0 * res.dir_y;
+                pos.y += (res.overlap_y / 2.0 + epsilon) * res.dir_y;
             }
             if let Ok(velo) = entry_a.get_component_mut::<Velocity<f64>>() {
-                velo.dy *= -1.0;
+                velo.dy = velo.dy.abs().max(MIN_BOUNCE) * res.dir_y;
             }
         }
     }
@@ -58,17 +62,17 @@ pub fn apply_resolution(world: &mut SubWorld, res: &Resolution) {
     if let Ok(mut entry_b) = world.entry_mut(res.ent_b) {
         if res.axis {
             if let Ok(pos) = entry_b.get_component_mut::<Position<f64>>() {
-                pos.x -= res.overlap_x / 2.0 * res.dir_x;
+                pos.x -= (res.overlap_x / 2.0 + epsilon) * res.dir_x;
             }
             if let Ok(velo) = entry_b.get_component_mut::<Velocity<f64>>() {
-                velo.dx *= -1.0;
+                velo.dx = velo.dx.abs() * -res.dir_x; 
             }
         } else {
             if let Ok(pos) = entry_b.get_component_mut::<Position<f64>>() {
-                pos.y -= res.overlap_y / 2.0 * res.dir_y;
+                pos.y -= (res.overlap_y / 2.0 + epsilon) * res.dir_y;
             }
             if let Ok(velo) = entry_b.get_component_mut::<Velocity<f64>>() {
-                velo.dy *= -1.0;
+                velo.dy = velo.dy.abs() * -res.dir_y;
             }
         }
     }
