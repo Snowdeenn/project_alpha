@@ -1,24 +1,26 @@
 mod component;
+mod helper;
 mod input;
 mod renderer;
 mod systems;
-mod helper;
 
-use core::f64;
 use std::time::{Duration, Instant};
 
 use legion::*;
 use raylib::math::Vector2;
 
 use crate::{
-    component::{Collider, Dash, Player, Position, Velocity},
+    component::{Collider, Dash, IA, Player, Position, Velocity},
+    helper::PlayerPos,
     input::{
         InputReader,
         event::{InputQueue, InputState},
     },
-    renderer::{CameraTarget, RenderQueue, Renderer},
+    renderer::{RenderQueue, Renderer},
     systems::{
-        collide_arena_system, collide_system, dash_system, friction_system, render_oponent_system, render_player_system, update_camera_system, update_position_system, update_velocity_system
+        collide_arena_system, collide_system, dash_system, friction_system, ia_seek_system,
+        render_oponent_system, render_player_system, update_camera_system, update_position_system,
+        update_velocity_system, update_player_pos_system,
     },
 };
 
@@ -41,6 +43,8 @@ fn main() {
         .add_system(update_velocity_system())
         .add_system(dash_system())
         .add_system(update_position_system())
+        .add_system(update_player_pos_system())
+        .add_system(ia_seek_system())
         .add_system(collide_system())
         .add_system(collide_arena_system())
         .add_system(update_camera_system())
@@ -61,16 +65,16 @@ fn main() {
         Collider { w: 40.0, h: 40.0 },
     ));
 
-    let _entity_temp = world.push((Position { x: 800.0, y: 600.0 }, Collider { w: 40.0, h: 40.0 }));
+    let _entity_temp = world.push((
+        IA,
+        Position { x: 800.0, y: 600.0 },
+        Collider { w: 40.0, h: 40.0 },
+        Velocity { dx: 0.0, dy: 0.0 },
+    ));
 
     let mut query = <&Position<f64>>::query().filter(component::<Player>());
     for pos in query.iter(&world) {
-        resources.insert(CameraTarget {
-            pos: Vector2 {
-                x: pos.x as f32,
-                y: pos.y as f32,
-            },
-        });
+        resources.insert(PlayerPos { x: pos.x, y: pos.y });
     }
 
     while !renderer.rl.window_should_close() {
