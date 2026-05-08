@@ -1,8 +1,8 @@
+use std::f64;
 use std::time::Duration;
 
 use crate::helper::*;
 use crate::input::event::{InputEvent, InputQueue, InputState};
-use crate::renderer::CameraTarget;
 use crate::renderer::commands::DrawCommand;
 
 use crate::{component::*, renderer::RenderQueue};
@@ -27,6 +27,13 @@ pub fn update_position(pos: &mut Position<f64>, velo: &Velocity<f64>, #[resource
 
 #[system(for_each)]
 #[filter(component::<Player>())]
+pub fn update_player_pos(pos: &Position<f64>, #[resource] player_pos: &mut PlayerPos) {
+    player_pos.x = pos.x;
+    player_pos.y = pos.y;
+}
+
+#[system(for_each)]
+#[filter(component::<Player>())]
 pub fn render_player(pos: &mut Position<f64>, #[resource] queue: &mut RenderQueue) {
     queue.0.push(DrawCommand::Rectangle {
         x: pos.x as i32,
@@ -38,7 +45,7 @@ pub fn render_player(pos: &mut Position<f64>, #[resource] queue: &mut RenderQueu
 }
 
 #[system(for_each)]
-#[filter(!component::<Player>())]
+#[filter(component::<IA>())]
 pub fn render_oponent(pos: &mut Position<f64>, #[resource] queue: &mut RenderQueue) {
     queue.0.push(DrawCommand::Rectangle {
         x: pos.x as i32,
@@ -112,9 +119,9 @@ pub fn dash(
 
 #[system(for_each)]
 #[filter(component::<Player>())]
-pub fn update_camera(pos: &Position<f64>, #[resource] target_pos: &mut CameraTarget) {
-    target_pos.pos.x = pos.x.to_f32().unwrap_or_default();
-    target_pos.pos.y = pos.y.to_f32().unwrap_or_default();
+pub fn update_camera(pos: &Position<f64>, #[resource] target_pos: &mut PlayerPos) {
+    target_pos.x = pos.x.to_f64().unwrap_or_default();
+    target_pos.y = pos.y.to_f64().unwrap_or_default();
 }
 
 #[system(for_each)]
@@ -159,4 +166,28 @@ pub fn collide(world: &mut SubWorld) {
     for res in to_resolve {
         apply_resolution(world, &res);
     }
+}
+
+const IA_SPEED: f64 = 200.0;
+#[system(for_each)]
+#[filter(component::<IA>())]
+pub fn ia_seek(
+    velo: &mut Velocity<f64>,
+    pos: &Position<f64>,
+    #[resource] pos_target: &PlayerPos,
+    #[resource] dt: &Duration,
+) {
+    let vec_pos = Vector2::new(pos.x as f32, pos.y as f32);
+    let vec_pos_tar = Vector2::new(pos_target.x as f32, pos_target.y as f32);
+    let desired_velo = (vec_pos_tar - vec_pos).normalized() * IA_SPEED as f32;
+
+    let vec_velo = Vector2::new(velo.dx as f32, velo.dy as f32);
+    let steering_force = desired_velo - vec_velo;
+
+    velo.dx += (steering_force.x * (*dt).as_secs_f32())
+        .to_f64()
+        .unwrap_or_default();
+    velo.dy += (steering_force.y * (*dt).as_secs_f32())
+        .to_f64()
+        .unwrap_or_default();
 }
