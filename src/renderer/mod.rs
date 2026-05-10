@@ -1,6 +1,5 @@
 pub mod commands;
-
-use crate::{helper::PlayerPos, renderer::commands::DrawCommand};
+use crate::{helper::PlayerPos, renderer::commands::DrawCommand, config::{SCREEN_H, SCREEN_W}};
 use legion::Resources;
 use raylib::prelude::*;
 
@@ -13,9 +12,6 @@ pub struct Renderer {
     pub(crate) screen_w: i32,
     pub(crate) screen_h: i32,
 }
-
-const SCREEN_H: i32 = 1080;
-const SCREEN_W: i32 = 1920;
 
 impl Renderer {
     pub fn new(title: &str, resources: &Resources) -> Renderer {
@@ -77,6 +73,9 @@ impl Renderer {
                 match cmd {
                     DrawCommand::Rectangle { x, y, w, h, color } => {
                         d2.draw_rectangle(*x, *y, *w, *h, *color);
+                    },
+                    DrawCommand::Text { text, x, y, font_size, color } => {
+                        d2.draw_text(&text[..], *x, *y, *font_size, *color);
                     }
                 }
             }

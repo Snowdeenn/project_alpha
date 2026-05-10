@@ -1,9 +1,9 @@
-use std::f64;
 use std::time::Duration;
 
-use crate::helper::*;
+use crate::event::{DamageEvent, DamageQueue};
 use crate::input::event::{InputEvent, InputQueue, InputState};
 use crate::renderer::commands::DrawCommand;
+use crate::{helper::*, wave};
 
 use crate::{component::*, renderer::RenderQueue};
 use legion::world::SubWorld;
@@ -133,8 +133,11 @@ pub fn collide_arena(pos: &mut Position<f64>, col: &Collider) {
 #[system]
 #[read_component(Position<f64>)]
 #[read_component(Collider)]
+#[read_component(Player)]
+#[read_component(IA)]
 #[write_component(Velocity<f64>)]
-pub fn collide(world: &mut SubWorld) {
+#[write_component(Position<f64>)]
+pub fn collide(world: &mut SubWorld, #[resource] damage_queue: &mut DamageQueue) {
     let mut query = <(Entity, &Position<f64>, &Collider)>::query();
     let entities: Vec<_> = query.iter(world).collect();
 
@@ -158,6 +161,48 @@ pub fn collide(world: &mut SubWorld) {
                     dir_x: (center_a_x - center_b_x).signum(),
                     dir_y: (center_a_y - center_b_y).signum(),
                     axis: overlap_x < overlap_y,
+                });
+            }
+
+            let a_is_player = {
+                world
+                    .entry_ref(*ent_a)
+                    .map(|e| e.get_component::<Player>().is_ok())
+                    .unwrap_or(false)
+            };
+
+            let a_is_ia = {
+                world
+                    .entry_ref(*ent_a)
+                    .map(|e| e.get_component::<IA>().is_ok())
+                    .unwrap_or(false)
+            };
+
+            let b_is_player = {
+                world
+                    .entry_ref(*ent_b)
+                    .map(|e| e.get_component::<Player>().is_ok())
+                    .unwrap_or(false)
+            };
+
+            let b_is_ia = {
+                world
+                    .entry_ref(*ent_b)
+                    .map(|e| e.get_component::<IA>().is_ok())
+                    .unwrap_or(false)
+            };
+            
+            if a_is_player && b_is_ia {
+                damage_queue.0.push(DamageEvent {
+                    target: *ent_a,
+                    amount: 10,
+                });
+            }
+
+            if b_is_player && a_is_ia {
+                damage_queue.0.push(DamageEvent {
+                    target: *ent_b,
+                    amount: 10,
                 });
             }
         }
@@ -190,4 +235,23 @@ pub fn ia_seek(
     velo.dy += (steering_force.y * (*dt).as_secs_f32())
         .to_f64()
         .unwrap_or_default();
+}
+
+#[system(for_each)]
+pub fn health(health: &mut Health) {
+    if health.hp == 0 {
+        health.state = HealthState::Dead;
+    }
+}
+
+#[system]
+#[write_component(Health)]
+pub fn apply_damage(world: &mut SubWorld, #[resource] damage_queue: &mut DamageQueue) {
+    for event in damage_queue.0.iter() {
+        if let Ok(mut entry) = world.entry_mut(event.target) {
+            if let Ok(health) = entry.get_component_mut::<Health>() {
+                health.hp = health.hp.saturating_sub(event.amount);
+            }
+        }
+    }
 }
