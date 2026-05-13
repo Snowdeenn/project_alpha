@@ -1,7 +1,6 @@
-use std::any;
 use std::time::Duration;
 
-use crate::event::{DamageEvent, DamageQueue, EnemyDiedQueue};
+use crate::event::{DamageEvent, DamageQueue, EnemyDiedQueue, EnemyDied};
 use crate::input::event::{InputEvent, InputQueue, InputState};
 use crate::renderer::commands::DrawCommand;
 use crate::wave::{WaveManager, WaveConfigs, EnemyPool, WaveState};
@@ -12,6 +11,7 @@ use legion::world::SubWorld;
 use legion::*;
 use num_traits::ToPrimitive;
 use raylib::prelude::*;
+use serde::de;
 
 const ACCEL: f64 = 1500.0;
 // todo: Ajouter plusieurs friction en fonction
@@ -48,7 +48,9 @@ pub fn render_player(pos: &mut Position<f64>, #[resource] queue: &mut RenderQueu
 
 #[system(for_each)]
 #[filter(component::<IA>())]
-pub fn render_oponent(pos: &mut Position<f64>, #[resource] queue: &mut RenderQueue) {
+pub fn render_oponent(pos: &mut Position<f64>, active: &Active, #[resource] queue: &mut RenderQueue) {
+    if !active.0 { return; }
+
     queue.0.push(DrawCommand::Rectangle {
         x: pos.x as i32,
         y: pos.y as i32,
@@ -139,9 +141,13 @@ pub fn collide_arena(pos: &mut Position<f64>, col: &Collider) {
 #[read_component(IA)]
 #[write_component(Velocity<f64>)]
 #[write_component(Position<f64>)]
+#[read_component(Active)]
 pub fn collide(world: &mut SubWorld, #[resource] damage_queue: &mut DamageQueue) {
-    let mut query = <(Entity, &Position<f64>, &Collider)>::query();
-    let entities: Vec<_> = query.iter(world).collect();
+    let mut query = <(Entity, &Position<f64>, &Collider, &Active)>::query();
+    let entities: Vec<_> = query.iter(world)
+        .filter(|(_, _, _, active)| active.0)
+        .map(|(e, p, c, _)| (e, p, c))
+        .collect();
 
     let mut to_resolve: Vec<Resolution> = Vec::new();
     for i in 0..entities.len() {
@@ -164,48 +170,47 @@ pub fn collide(world: &mut SubWorld, #[resource] damage_queue: &mut DamageQueue)
                     dir_y: (center_a_y - center_b_y).signum(),
                     axis: overlap_x < overlap_y,
                 });
-            }
+                let a_is_player = {
+                    world
+                        .entry_ref(*ent_a)
+                        .map(|e| e.get_component::<Player>().is_ok())
+                        .unwrap_or(false)
+                };
 
-            let a_is_player = {
-                world
-                    .entry_ref(*ent_a)
-                    .map(|e| e.get_component::<Player>().is_ok())
-                    .unwrap_or(false)
-            };
+                let a_is_ia = {
+                    world
+                        .entry_ref(*ent_a)
+                        .map(|e| e.get_component::<IA>().is_ok())
+                        .unwrap_or(false)
+                };
 
-            let a_is_ia = {
-                world
-                    .entry_ref(*ent_a)
-                    .map(|e| e.get_component::<IA>().is_ok())
-                    .unwrap_or(false)
-            };
+                let b_is_player = {
+                    world
+                        .entry_ref(*ent_b)
+                        .map(|e| e.get_component::<Player>().is_ok())
+                        .unwrap_or(false)
+                };
 
-            let b_is_player = {
-                world
-                    .entry_ref(*ent_b)
-                    .map(|e| e.get_component::<Player>().is_ok())
-                    .unwrap_or(false)
-            };
+                let b_is_ia = {
+                    world
+                        .entry_ref(*ent_b)
+                        .map(|e| e.get_component::<IA>().is_ok())
+                        .unwrap_or(false)
+                };
+                
+                if a_is_player && b_is_ia {
+                    damage_queue.0.push(DamageEvent {
+                        target: *ent_b,
+                        amount: 10,
+                    });
+                }
 
-            let b_is_ia = {
-                world
-                    .entry_ref(*ent_b)
-                    .map(|e| e.get_component::<IA>().is_ok())
-                    .unwrap_or(false)
-            };
-            
-            if a_is_player && b_is_ia {
-                damage_queue.0.push(DamageEvent {
-                    target: *ent_a,
-                    amount: 10,
-                });
-            }
-
-            if b_is_player && a_is_ia {
-                damage_queue.0.push(DamageEvent {
-                    target: *ent_b,
-                    amount: 10,
-                });
+                if b_is_player && a_is_ia {
+                    damage_queue.0.push(DamageEvent {
+                        target: *ent_a,
+                        amount: 10,
+                    });
+                }
             }
         }
     }
@@ -221,9 +226,11 @@ const IA_SPEED: f64 = 200.0;
 pub fn ia_seek(
     velo: &mut Velocity<f64>,
     pos: &Position<f64>,
+    active: &Active,
     #[resource] pos_target: &PlayerPos,
     #[resource] dt: &Duration,
 ) {
+    if !active.0 { return; }
     let vec_pos = Vector2::new(pos.x as f32, pos.y as f32);
     let vec_pos_tar = Vector2::new(pos_target.x as f32, pos_target.y as f32);
     let desired_velo = (vec_pos_tar - vec_pos).normalized() * IA_SPEED as f32;
@@ -239,12 +246,30 @@ pub fn ia_seek(
         .unwrap_or_default();
 }
 
-#[system(for_each)]
-pub fn health(health: &mut Health) {
-    if health.hp == 0 {
-        health.state = HealthState::Dead;
+#[system]
+#[write_component(Health)]
+#[read_component(IA)]
+#[read_component(Player)]
+pub fn health(world: &mut SubWorld, #[resource] enemy_die_queue: &mut EnemyDiedQueue) {
+
+    let dead: Vec<Entity> = <(Entity, &mut Health)>::query()
+    .iter_mut(world)
+    .filter(|(_, h)| h.hp == 0 && h.state != HealthState::Dead)
+    .map(|(e, h)| { h.state = HealthState::Dead; *e })
+    .collect();
+
+    for entity in dead {
+        if let Ok(entry) = world.entry_ref(entity) {
+            if entry.get_component::<IA>().is_ok() {
+                enemy_die_queue.0.push(EnemyDied(entity));
+            }
+            if entry.get_component::<Player>().is_ok() {
+                // todo: Handle player death
+            }
+        }
     }
 }
+
 
 #[system]
 #[write_component(Health)]
@@ -261,7 +286,7 @@ pub fn apply_damage(world: &mut SubWorld, #[resource] damage_queue: &mut DamageQ
 const SPAWN_RADIUS: f64 = 800.0;
 use std::f64::consts::PI;
 #[system]
-#[read_component(Health)]
+#[write_component(Health)]
 #[write_component(Active)]
 #[write_component(Position<f64>)]
 pub fn wave_update(
@@ -296,6 +321,11 @@ pub fn wave_update(
                                     pos.y = player_pos.y + angle.sin() * SPAWN_RADIUS;
                                 }
 
+                                if let Ok(health) = entry.get_component_mut::<Health>() {
+                                    health.hp = 100;
+                                    health.state = HealthState::Alive;
+                                }
+
                                 wave_manager.spawn_timer = Duration::from_millis(
                                     wave_configs.0[wave_manager.current_wave].spawn_interval
                                 );
@@ -307,8 +337,13 @@ pub fn wave_update(
                 } //end for
             } // Update spawn timer and enemy count
 
-            for _ in enemy_die_queue.0.iter() {
+            for event in enemy_die_queue.0.iter() {
                 wave_manager.enemies_remaining = wave_manager.enemies_remaining.saturating_sub(1);
+                if let Ok(mut entry) = world.entry_mut(event.0) {
+                    if let Ok(active) = entry.get_component_mut::<Active>() {
+                        active.0 = false;
+                    }
+                }
             }
 
             if wave_manager.enemies_remaining == 0 && wave_manager.enemies_to_spawn == 0 {
@@ -320,7 +355,7 @@ pub fn wave_update(
             let remaining = d.saturating_sub(*dt);
             if remaining.is_zero() {
                 wave_manager.current_wave += 1;
-                
+
                 if let Some(config) = wave_configs.0.get(wave_manager.current_wave) {
                     wave_manager.enemies_to_spawn = config.enemy_count;
                     wave_manager.enemies_remaining = config.enemy_count;
