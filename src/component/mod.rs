@@ -32,7 +32,7 @@ pub struct Collider {
     pub h: f64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum HealthState {
     Alive,
     Dead,
@@ -43,3 +43,6 @@ pub struct Health {
    pub hp: u32,
    pub state: HealthState,
 }
+
+#[derive(Debug, PartialEq)]
+pub struct Active(pub bool);
