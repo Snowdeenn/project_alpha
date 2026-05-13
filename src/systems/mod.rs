@@ -1,15 +1,17 @@
-use std::f64;
 use std::time::Duration;
 
-use crate::helper::*;
+use crate::event::{DamageEvent, DamageQueue, EnemyDiedQueue, EnemyDied};
 use crate::input::event::{InputEvent, InputQueue, InputState};
 use crate::renderer::commands::DrawCommand;
+use crate::wave::{WaveManager, WaveConfigs, EnemyPool, WaveState};
+use crate::{helper::*};
 
 use crate::{component::*, renderer::RenderQueue};
 use legion::world::SubWorld;
 use legion::*;
 use num_traits::ToPrimitive;
 use raylib::prelude::*;
+use serde::de;
 
 const ACCEL: f64 = 1500.0;
 // todo: Ajouter plusieurs friction en fonction
@@ -46,7 +48,9 @@ pub fn render_player(pos: &mut Position<f64>, #[resource] queue: &mut RenderQueu
 
 #[system(for_each)]
 #[filter(component::<IA>())]
-pub fn render_oponent(pos: &mut Position<f64>, #[resource] queue: &mut RenderQueue) {
+pub fn render_oponent(pos: &mut Position<f64>, active: &Active, #[resource] queue: &mut RenderQueue) {
+    if !active.0 { return; }
+
     queue.0.push(DrawCommand::Rectangle {
         x: pos.x as i32,
         y: pos.y as i32,
@@ -133,10 +137,17 @@ pub fn collide_arena(pos: &mut Position<f64>, col: &Collider) {
 #[system]
 #[read_component(Position<f64>)]
 #[read_component(Collider)]
+#[read_component(Player)]
+#[read_component(IA)]
 #[write_component(Velocity<f64>)]
-pub fn collide(world: &mut SubWorld) {
-    let mut query = <(Entity, &Position<f64>, &Collider)>::query();
-    let entities: Vec<_> = query.iter(world).collect();
+#[write_component(Position<f64>)]
+#[read_component(Active)]
+pub fn collide(world: &mut SubWorld, #[resource] damage_queue: &mut DamageQueue) {
+    let mut query = <(Entity, &Position<f64>, &Collider, &Active)>::query();
+    let entities: Vec<_> = query.iter(world)
+        .filter(|(_, _, _, active)| active.0)
+        .map(|(e, p, c, _)| (e, p, c))
+        .collect();
 
     let mut to_resolve: Vec<Resolution> = Vec::new();
     for i in 0..entities.len() {
@@ -159,6 +170,47 @@ pub fn collide(world: &mut SubWorld) {
                     dir_y: (center_a_y - center_b_y).signum(),
                     axis: overlap_x < overlap_y,
                 });
+                let a_is_player = {
+                    world
+                        .entry_ref(*ent_a)
+                        .map(|e| e.get_component::<Player>().is_ok())
+                        .unwrap_or(false)
+                };
+
+                let a_is_ia = {
+                    world
+                        .entry_ref(*ent_a)
+                        .map(|e| e.get_component::<IA>().is_ok())
+                        .unwrap_or(false)
+                };
+
+                let b_is_player = {
+                    world
+                        .entry_ref(*ent_b)
+                        .map(|e| e.get_component::<Player>().is_ok())
+                        .unwrap_or(false)
+                };
+
+                let b_is_ia = {
+                    world
+                        .entry_ref(*ent_b)
+                        .map(|e| e.get_component::<IA>().is_ok())
+                        .unwrap_or(false)
+                };
+                
+                if a_is_player && b_is_ia {
+                    damage_queue.0.push(DamageEvent {
+                        target: *ent_b,
+                        amount: 10,
+                    });
+                }
+
+                if b_is_player && a_is_ia {
+                    damage_queue.0.push(DamageEvent {
+                        target: *ent_a,
+                        amount: 10,
+                    });
+                }
             }
         }
     }
@@ -174,9 +226,11 @@ const IA_SPEED: f64 = 200.0;
 pub fn ia_seek(
     velo: &mut Velocity<f64>,
     pos: &Position<f64>,
+    active: &Active,
     #[resource] pos_target: &PlayerPos,
     #[resource] dt: &Duration,
 ) {
+    if !active.0 { return; }
     let vec_pos = Vector2::new(pos.x as f32, pos.y as f32);
     let vec_pos_tar = Vector2::new(pos_target.x as f32, pos_target.y as f32);
     let desired_velo = (vec_pos_tar - vec_pos).normalized() * IA_SPEED as f32;
@@ -190,4 +244,128 @@ pub fn ia_seek(
     velo.dy += (steering_force.y * (*dt).as_secs_f32())
         .to_f64()
         .unwrap_or_default();
+}
+
+#[system]
+#[write_component(Health)]
+#[read_component(IA)]
+#[read_component(Player)]
+pub fn health(world: &mut SubWorld, #[resource] enemy_die_queue: &mut EnemyDiedQueue) {
+
+    let dead: Vec<Entity> = <(Entity, &mut Health)>::query()
+    .iter_mut(world)
+    .filter(|(_, h)| h.hp == 0 && h.state != HealthState::Dead)
+    .map(|(e, h)| { h.state = HealthState::Dead; *e })
+    .collect();
+
+    for entity in dead {
+        if let Ok(entry) = world.entry_ref(entity) {
+            if entry.get_component::<IA>().is_ok() {
+                enemy_die_queue.0.push(EnemyDied(entity));
+            }
+            if entry.get_component::<Player>().is_ok() {
+                // todo: Handle player death
+            }
+        }
+    }
+}
+
+
+#[system]
+#[write_component(Health)]
+pub fn apply_damage(world: &mut SubWorld, #[resource] damage_queue: &mut DamageQueue) {
+    for event in damage_queue.0.iter() {
+        if let Ok(mut entry) = world.entry_mut(event.target) {
+            if let Ok(health) = entry.get_component_mut::<Health>() {
+                health.hp = health.hp.saturating_sub(event.amount);
+            }
+        }
+    }
+}
+
+const SPAWN_RADIUS: f64 = 800.0;
+use std::f64::consts::PI;
+#[system]
+#[write_component(Health)]
+#[write_component(Active)]
+#[write_component(Position<f64>)]
+pub fn wave_update(
+    world: &mut SubWorld, 
+    #[resource] wave_manager: &mut WaveManager,
+    #[resource] dt: &Duration,
+    #[resource] wave_configs: &WaveConfigs,
+    #[resource] player_pos: &PlayerPos,
+    #[resource] enemy_die_queue: &mut EnemyDiedQueue,
+    #[resource] enemy_pool: &EnemyPool,
+)
+{
+    match wave_manager.wave_state {
+        WaveState::InProgress => {
+
+            let remaining_spawn_time = wave_manager.spawn_timer.saturating_sub(*dt);
+            wave_manager.spawn_timer = remaining_spawn_time;
+
+            if remaining_spawn_time.is_zero() && wave_manager.enemies_to_spawn > 0 {
+
+                for entity in enemy_pool.pool.iter() {
+                    if let Ok(mut entry) = world.entry_mut(*entity) {
+                        if let Ok(active) = entry.get_component_mut::<Active>() {
+                            if active.0 {
+                                continue; // Skip enemis actifs
+                            }
+                            else {
+                                *active = Active(true); 
+                                if let Ok(pos) = entry.get_component_mut::<Position<f64>>() {
+                                    let angle = rand::random::<f64>() * 2.0 * PI;
+                                    pos.x = player_pos.x + angle.cos() * SPAWN_RADIUS;
+                                    pos.y = player_pos.y + angle.sin() * SPAWN_RADIUS;
+                                }
+
+                                if let Ok(health) = entry.get_component_mut::<Health>() {
+                                    health.hp = 100;
+                                    health.state = HealthState::Alive;
+                                }
+
+                                wave_manager.spawn_timer = Duration::from_millis(
+                                    wave_configs.0[wave_manager.current_wave].spawn_interval
+                                );
+                                wave_manager.enemies_to_spawn -= 1;
+                                break; // Spawn un ennemi à la fois
+                            }  
+                        } 
+                    }      
+                } //end for
+            } // Update spawn timer and enemy count
+
+            for event in enemy_die_queue.0.iter() {
+                wave_manager.enemies_remaining = wave_manager.enemies_remaining.saturating_sub(1);
+                if let Ok(mut entry) = world.entry_mut(event.0) {
+                    if let Ok(active) = entry.get_component_mut::<Active>() {
+                        active.0 = false;
+                    }
+                }
+            }
+
+            if wave_manager.enemies_remaining == 0 && wave_manager.enemies_to_spawn == 0 {
+                wave_manager.wave_state = WaveState::BetweenWave(Duration::from_secs(5));
+            }
+        },
+        WaveState::BetweenWave(d) => {
+
+            let remaining = d.saturating_sub(*dt);
+            if remaining.is_zero() {
+                wave_manager.current_wave += 1;
+
+                if let Some(config) = wave_configs.0.get(wave_manager.current_wave) {
+                    wave_manager.enemies_to_spawn = config.enemy_count;
+                    wave_manager.enemies_remaining = config.enemy_count;
+                    wave_manager.spawn_timer = Duration::from_millis(config.spawn_interval);
+                    wave_manager.wave_state = WaveState::InProgress;
+                }
+            }
+            else {
+                wave_manager.wave_state = WaveState::BetweenWave(remaining);
+            }
+        }
+    }
 }

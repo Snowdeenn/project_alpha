@@ -31,3 +31,18 @@ pub struct Collider {
     pub w: f64,
     pub h: f64,
 }
+
+#[derive(Debug, PartialEq)]
+pub enum HealthState {
+    Alive,
+    Dead,
+}
+
+#[derive(Debug)]
+pub struct Health {
+   pub hp: u32,
+   pub state: HealthState,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Active(pub bool);
