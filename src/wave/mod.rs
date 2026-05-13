@@ -1,5 +1,5 @@
 use std::time::Duration;
-
+use legion::Entity;
 use serde::Deserialize;
 
 #[derive(Debug)]
@@ -22,8 +22,14 @@ pub struct WaveConfig {
     pub enemy_count: u32, 
     pub enemy_hp: u32,
     pub enemy_speed: f64,
+    #[serde(rename = "spawn_interval_ms")]
     pub spawn_interval: u64,
 }
 
 #[derive(Debug)]
 pub struct WaveConfigs(pub Vec<WaveConfig>);
+
+#[derive(Debug)]
+pub struct EnemyPool {
+    pub pool: Vec<Entity>,
+}

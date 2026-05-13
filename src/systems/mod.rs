@@ -1,9 +1,11 @@
+use std::any;
 use std::time::Duration;
 
-use crate::event::{DamageEvent, DamageQueue};
+use crate::event::{DamageEvent, DamageQueue, EnemyDiedQueue};
 use crate::input::event::{InputEvent, InputQueue, InputState};
 use crate::renderer::commands::DrawCommand;
-use crate::{helper::*, wave};
+use crate::wave::{WaveManager, WaveConfigs, EnemyPool, WaveState};
+use crate::{helper::*};
 
 use crate::{component::*, renderer::RenderQueue};
 use legion::world::SubWorld;
@@ -251,6 +253,83 @@ pub fn apply_damage(world: &mut SubWorld, #[resource] damage_queue: &mut DamageQ
         if let Ok(mut entry) = world.entry_mut(event.target) {
             if let Ok(health) = entry.get_component_mut::<Health>() {
                 health.hp = health.hp.saturating_sub(event.amount);
+            }
+        }
+    }
+}
+
+const SPAWN_RADIUS: f64 = 800.0;
+use std::f64::consts::PI;
+#[system]
+#[read_component(Health)]
+#[write_component(Active)]
+#[write_component(Position<f64>)]
+pub fn wave_update(
+    world: &mut SubWorld, 
+    #[resource] wave_manager: &mut WaveManager,
+    #[resource] dt: &Duration,
+    #[resource] wave_configs: &WaveConfigs,
+    #[resource] player_pos: &PlayerPos,
+    #[resource] enemy_die_queue: &mut EnemyDiedQueue,
+    #[resource] enemy_pool: &EnemyPool,
+)
+{
+    match wave_manager.wave_state {
+        WaveState::InProgress => {
+
+            let remaining_spawn_time = wave_manager.spawn_timer.saturating_sub(*dt);
+            wave_manager.spawn_timer = remaining_spawn_time;
+
+            if remaining_spawn_time.is_zero() && wave_manager.enemies_to_spawn > 0 {
+
+                for entity in enemy_pool.pool.iter() {
+                    if let Ok(mut entry) = world.entry_mut(*entity) {
+                        if let Ok(active) = entry.get_component_mut::<Active>() {
+                            if active.0 {
+                                continue; // Skip enemis actifs
+                            }
+                            else {
+                                *active = Active(true); 
+                                if let Ok(pos) = entry.get_component_mut::<Position<f64>>() {
+                                    let angle = rand::random::<f64>() * 2.0 * PI;
+                                    pos.x = player_pos.x + angle.cos() * SPAWN_RADIUS;
+                                    pos.y = player_pos.y + angle.sin() * SPAWN_RADIUS;
+                                }
+
+                                wave_manager.spawn_timer = Duration::from_millis(
+                                    wave_configs.0[wave_manager.current_wave].spawn_interval
+                                );
+                                wave_manager.enemies_to_spawn -= 1;
+                                break; // Spawn un ennemi à la fois
+                            }  
+                        } 
+                    }      
+                } //end for
+            } // Update spawn timer and enemy count
+
+            for _ in enemy_die_queue.0.iter() {
+                wave_manager.enemies_remaining = wave_manager.enemies_remaining.saturating_sub(1);
+            }
+
+            if wave_manager.enemies_remaining == 0 && wave_manager.enemies_to_spawn == 0 {
+                wave_manager.wave_state = WaveState::BetweenWave(Duration::from_secs(5));
+            }
+        },
+        WaveState::BetweenWave(d) => {
+
+            let remaining = d.saturating_sub(*dt);
+            if remaining.is_zero() {
+                wave_manager.current_wave += 1;
+                
+                if let Some(config) = wave_configs.0.get(wave_manager.current_wave) {
+                    wave_manager.enemies_to_spawn = config.enemy_count;
+                    wave_manager.enemies_remaining = config.enemy_count;
+                    wave_manager.spawn_timer = Duration::from_millis(config.spawn_interval);
+                    wave_manager.wave_state = WaveState::InProgress;
+                }
+            }
+            else {
+                wave_manager.wave_state = WaveState::BetweenWave(remaining);
             }
         }
     }
