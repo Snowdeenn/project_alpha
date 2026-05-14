@@ -1,17 +1,16 @@
 use std::time::Duration;
 
-use crate::event::{DamageEvent, DamageQueue, EnemyDiedQueue, EnemyDied};
+use crate::eco::{CoinPool, CoinSpawnQueue, PickupQueue, Gold};
+use crate::event::{CoinEvent, DamageEvent, DamageQueue, EnemyDied, EnemyDiedQueue};
+use crate::helper::*;
 use crate::input::event::{InputEvent, InputQueue, InputState};
 use crate::renderer::commands::DrawCommand;
-use crate::wave::{WaveManager, WaveConfigs, EnemyPool, WaveState};
-use crate::{helper::*};
-
+use crate::wave::{EnemyPool, WaveConfigs, WaveManager, WaveState};
 use crate::{component::*, renderer::RenderQueue};
 use legion::world::SubWorld;
 use legion::*;
 use num_traits::ToPrimitive;
 use raylib::prelude::*;
-use serde::de;
 
 const ACCEL: f64 = 1500.0;
 // todo: Ajouter plusieurs friction en fonction
@@ -48,8 +47,14 @@ pub fn render_player(pos: &mut Position<f64>, #[resource] queue: &mut RenderQueu
 
 #[system(for_each)]
 #[filter(component::<IA>())]
-pub fn render_oponent(pos: &mut Position<f64>, active: &Active, #[resource] queue: &mut RenderQueue) {
-    if !active.0 { return; }
+pub fn render_oponent(
+    pos: &mut Position<f64>,
+    active: &Active,
+    #[resource] queue: &mut RenderQueue,
+) {
+    if !active.0 {
+        return;
+    }
 
     queue.0.push(DrawCommand::Rectangle {
         x: pos.x as i32,
@@ -142,10 +147,13 @@ pub fn collide_arena(pos: &mut Position<f64>, col: &Collider) {
 #[write_component(Velocity<f64>)]
 #[write_component(Position<f64>)]
 #[read_component(Active)]
+#[read_component(Coin)]
 pub fn collide(world: &mut SubWorld, #[resource] damage_queue: &mut DamageQueue) {
     let mut query = <(Entity, &Position<f64>, &Collider, &Active)>::query();
-    let entities: Vec<_> = query.iter(world)
+    let entities: Vec<_> = query
+        .iter(world)
         .filter(|(_, _, _, active)| active.0)
+        .filter(|(e, _, _, _)| world.entry_ref(**e).map_or(false, |e| !e.get_component::<Coin>().is_ok()))
         .map(|(e, p, c, _)| (e, p, c))
         .collect();
 
@@ -197,7 +205,7 @@ pub fn collide(world: &mut SubWorld, #[resource] damage_queue: &mut DamageQueue)
                         .map(|e| e.get_component::<IA>().is_ok())
                         .unwrap_or(false)
                 };
-                
+
                 if a_is_player && b_is_ia {
                     damage_queue.0.push(DamageEvent {
                         target: *ent_b,
@@ -230,7 +238,9 @@ pub fn ia_seek(
     #[resource] pos_target: &PlayerPos,
     #[resource] dt: &Duration,
 ) {
-    if !active.0 { return; }
+    if !active.0 {
+        return;
+    }
     let vec_pos = Vector2::new(pos.x as f32, pos.y as f32);
     let vec_pos_tar = Vector2::new(pos_target.x as f32, pos_target.y as f32);
     let desired_velo = (vec_pos_tar - vec_pos).normalized() * IA_SPEED as f32;
@@ -251,12 +261,14 @@ pub fn ia_seek(
 #[read_component(IA)]
 #[read_component(Player)]
 pub fn health(world: &mut SubWorld, #[resource] enemy_die_queue: &mut EnemyDiedQueue) {
-
     let dead: Vec<Entity> = <(Entity, &mut Health)>::query()
-    .iter_mut(world)
-    .filter(|(_, h)| h.hp == 0 && h.state != HealthState::Dead)
-    .map(|(e, h)| { h.state = HealthState::Dead; *e })
-    .collect();
+        .iter_mut(world)
+        .filter(|(_, h)| h.hp == 0 && h.state != HealthState::Dead)
+        .map(|(e, h)| {
+            h.state = HealthState::Dead;
+            *e
+        })
+        .collect();
 
     for entity in dead {
         if let Ok(entry) = world.entry_ref(entity) {
@@ -269,7 +281,6 @@ pub fn health(world: &mut SubWorld, #[resource] enemy_die_queue: &mut EnemyDiedQ
         }
     }
 }
-
 
 #[system]
 #[write_component(Health)]
@@ -290,31 +301,27 @@ use std::f64::consts::PI;
 #[write_component(Active)]
 #[write_component(Position<f64>)]
 pub fn wave_update(
-    world: &mut SubWorld, 
+    world: &mut SubWorld,
     #[resource] wave_manager: &mut WaveManager,
     #[resource] dt: &Duration,
     #[resource] wave_configs: &WaveConfigs,
     #[resource] player_pos: &PlayerPos,
     #[resource] enemy_die_queue: &mut EnemyDiedQueue,
     #[resource] enemy_pool: &EnemyPool,
-)
-{
+) {
     match wave_manager.wave_state {
         WaveState::InProgress => {
-
             let remaining_spawn_time = wave_manager.spawn_timer.saturating_sub(*dt);
             wave_manager.spawn_timer = remaining_spawn_time;
 
             if remaining_spawn_time.is_zero() && wave_manager.enemies_to_spawn > 0 {
-
                 for entity in enemy_pool.pool.iter() {
                     if let Ok(mut entry) = world.entry_mut(*entity) {
                         if let Ok(active) = entry.get_component_mut::<Active>() {
                             if active.0 {
                                 continue; // Skip enemis actifs
-                            }
-                            else {
-                                *active = Active(true); 
+                            } else {
+                                *active = Active(true);
                                 if let Ok(pos) = entry.get_component_mut::<Position<f64>>() {
                                     let angle = rand::random::<f64>() * 2.0 * PI;
                                     pos.x = player_pos.x + angle.cos() * SPAWN_RADIUS;
@@ -322,18 +329,18 @@ pub fn wave_update(
                                 }
 
                                 if let Ok(health) = entry.get_component_mut::<Health>() {
-                                    health.hp = 100;
+                                    health.hp = wave_configs.0[wave_manager.current_wave].enemy_hp;
                                     health.state = HealthState::Alive;
                                 }
 
                                 wave_manager.spawn_timer = Duration::from_millis(
-                                    wave_configs.0[wave_manager.current_wave].spawn_interval
+                                    wave_configs.0[wave_manager.current_wave].spawn_interval,
                                 );
                                 wave_manager.enemies_to_spawn -= 1;
                                 break; // Spawn un ennemi à la fois
-                            }  
-                        } 
-                    }      
+                            }
+                        }
+                    }
                 } //end for
             } // Update spawn timer and enemy count
 
@@ -349,9 +356,8 @@ pub fn wave_update(
             if wave_manager.enemies_remaining == 0 && wave_manager.enemies_to_spawn == 0 {
                 wave_manager.wave_state = WaveState::BetweenWave(Duration::from_secs(5));
             }
-        },
+        }
         WaveState::BetweenWave(d) => {
-
             let remaining = d.saturating_sub(*dt);
             if remaining.is_zero() {
                 wave_manager.current_wave += 1;
@@ -362,10 +368,154 @@ pub fn wave_update(
                     wave_manager.spawn_timer = Duration::from_millis(config.spawn_interval);
                     wave_manager.wave_state = WaveState::InProgress;
                 }
-            }
-            else {
+            } else {
                 wave_manager.wave_state = WaveState::BetweenWave(remaining);
             }
         }
     }
+}
+
+#[system]
+#[read_component(Position<f64>)]
+#[read_component(IA)]
+pub fn coin_push_to_queue(
+    word: &mut SubWorld,
+    #[resource] enemy_die_queue: &EnemyDiedQueue,
+    #[resource] coin_spawn_queue: &mut CoinSpawnQueue,
+) {
+    for event in enemy_die_queue.0.iter() {
+        if let Ok(entry) = word.entry_ref(event.0) {
+            if entry.get_component::<IA>().is_ok() {
+                coin_spawn_queue.0.push(CoinEvent {
+                    pos: Vector2::new(
+                        entry
+                            .get_component::<Position<f64>>()
+                            .map(|p| p.x as f32)
+                            .unwrap_or_default(),
+                        entry
+                            .get_component::<Position<f64>>()
+                            .map(|p| p.y as f32)
+                            .unwrap_or_default(),
+                    ),
+                });
+            }
+        }
+    }
+}
+
+#[system]
+#[write_component(Active)]
+#[write_component(Position<f64>)]
+pub fn coin_spawn(
+    world: &mut SubWorld,
+    #[resource] coin_spawn_queue: &mut CoinSpawnQueue,
+    #[resource] coin_pool: &CoinPool,
+) {
+    for coin in coin_pool.coins.iter() {
+        if let Ok(mut entry) = world.entry_mut(*coin) {
+            if let Ok(active) = entry.get_component_mut::<Active>() {
+                if active.0 {
+                    continue; // Skip coins actifs
+                } else {
+                    if let Some(event) = coin_spawn_queue.0.pop() {
+                        *active = Active(true);
+                        if let Ok(pos) = entry.get_component_mut::<Position<f64>>() {
+                            pos.x = event.pos.x as f64;
+                            pos.y = event.pos.y as f64;
+                        }
+                        if let Ok(value) = entry.get_component_mut::<CoinValue>() {
+                            value.0 = 10;
+                        }
+                    } 
+                }
+            }
+        }
+    }
+}
+
+#[system]
+#[read_component(Active)]
+#[read_component(Position<f64>)]
+#[read_component(Collider)]
+#[read_component(Player)]
+#[read_component(Coin)]
+pub fn coin_pickup(word: &mut SubWorld, #[resource] pick_up_queue: &mut PickupQueue) {
+    let mut query = <(Entity, &Position<f64>, &Collider, &Active)>::query();
+    let entities: Vec<_> = query
+        .iter(word)
+        .filter(|(_, _, _, active)| active.0)
+        .map(|(e, p, c, _)| (e, p, c))
+        .collect();
+
+    for i in 0..entities.len() {
+        for j in (i + 1)..entities.len() {
+            let (ent_a, pos_a, col_a) = entities[i];
+            let (ent_b, pos_b, col_b) = entities[j];
+
+            if let Some(_) = aabb_overlap(pos_a, col_a, pos_b, col_b) {
+                //println!("Collision detected between {:?} and {:?}", ent_a, ent_b);
+                let a_is_player = {
+                    word.entry_ref(*ent_a)
+                        .map(|e| e.get_component::<Player>().is_ok())
+                        .unwrap_or(false)
+                };
+
+                let b_is_player = {
+                    word.entry_ref(*ent_b)
+                        .map(|e| e.get_component::<Player>().is_ok())
+                        .unwrap_or(false)
+                };
+
+                let a_is_coin = {
+                    word.entry_ref(*ent_a)
+                        .map(|e| e.get_component::<Coin>().is_ok())
+                        .unwrap_or(false)
+                };
+
+                let b_is_coin = {
+                    word.entry_ref(*ent_b)
+                        .map(|e| e.get_component::<Coin>().is_ok())
+                        .unwrap_or(false)
+                };
+                if a_is_player && b_is_coin {
+                    pick_up_queue.0.push(*ent_b);
+                }
+
+                if b_is_player && a_is_coin {
+                    pick_up_queue.0.push(*ent_a);
+                }
+            }
+        }
+    }
+}
+
+#[system]
+#[read_component(CoinValue)]
+#[write_component(Active)]
+pub fn apply_pickup(world: &mut SubWorld, #[resource] pick_up_queue: &mut PickupQueue, #[resource] gold: &mut Gold) {
+    //println!("Applying pickups: {} coins", pick_up_queue.0.len());
+    for coin in pick_up_queue.0.iter() {
+        if let Ok(mut entry) = world.entry_mut(*coin) {
+            if let Ok(active) = entry.get_component_mut::<Active>() {
+                *active = Active(false);
+            }
+            if let Ok(value) = entry.get_component::<CoinValue>() {
+                gold.0 += value.0;
+            }
+        }
+    }
+}
+
+#[system(for_each)]
+#[filter(component::<Coin>())]
+pub fn render_coin(pos: &mut Position<f64>, active: &Active, #[resource] queue: &mut RenderQueue) {
+    if !active.0 {
+        return;
+    }
+    queue.0.push(DrawCommand::Circle {
+        x: pos.x as i32 + 20,
+        y: pos.y as i32 + 20,
+        radius: 10,
+        color: Color::YELLOW,
+    });
 }

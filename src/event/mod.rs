@@ -1,5 +1,5 @@
 use legion::world::Entity;
-
+use raylib::math::Vector2;
 #[derive(Debug, Clone, Copy)]
 pub struct DamageEvent {
     pub target: Entity,
@@ -16,3 +16,8 @@ pub struct EnemyDiedQueue(pub Vec<EnemyDied>);
 
 #[derive(Debug)]
 pub struct PlayerDied(pub bool);
+
+#[derive(Debug)]
+pub struct CoinEvent {
+    pub pos: Vector2,
+}

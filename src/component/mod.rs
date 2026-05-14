@@ -4,6 +4,7 @@ use num_traits::Num;
 
 pub struct Player;
 pub struct IA;
+pub struct Coin;
 
 #[derive(Debug, Default)]
 pub struct Position<T: Num> {
@@ -46,3 +47,5 @@ pub struct Health {
 
 #[derive(Debug, PartialEq)]
 pub struct Active(pub bool);
+
+pub struct CoinValue(pub u32); 
