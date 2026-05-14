@@ -76,6 +76,9 @@ impl Renderer {
                     },
                     DrawCommand::Text { text, x, y, font_size, color } => {
                         d2.draw_text(&text[..], *x, *y, *font_size, *color);
+                    },
+                    DrawCommand::Circle { x, y, radius, color } => {
+                        d2.draw_circle(*x, *y, *radius as f32, *color);
                     }
                 }
             }
