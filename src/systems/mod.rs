@@ -4,9 +4,9 @@ use crate::eco::{CoinPool, CoinSpawnQueue, PickupQueue, Gold};
 use crate::event::{CoinEvent, DamageEvent, DamageQueue, EnemyDied, EnemyDiedQueue};
 use crate::helper::*;
 use crate::input::event::{InputEvent, InputQueue, InputState};
-use crate::renderer::commands::DrawCommand;
+use crate::renderer::commands::{DrawCommand, HudCommand};
 use crate::wave::{EnemyPool, WaveConfigs, WaveManager, WaveState};
-use crate::{component::*, renderer::RenderQueue};
+use crate::{component::*, renderer::{RenderQueue, HudQueue}};
 use legion::world::SubWorld;
 use legion::*;
 use num_traits::ToPrimitive;
@@ -493,7 +493,6 @@ pub fn coin_pickup(word: &mut SubWorld, #[resource] pick_up_queue: &mut PickupQu
 #[read_component(CoinValue)]
 #[write_component(Active)]
 pub fn apply_pickup(world: &mut SubWorld, #[resource] pick_up_queue: &mut PickupQueue, #[resource] gold: &mut Gold) {
-    //println!("Applying pickups: {} coins", pick_up_queue.0.len());
     for coin in pick_up_queue.0.iter() {
         if let Ok(mut entry) = world.entry_mut(*coin) {
             if let Ok(active) = entry.get_component_mut::<Active>() {
@@ -517,5 +516,137 @@ pub fn render_coin(pos: &mut Position<f64>, active: &Active, #[resource] queue: 
         y: pos.y as i32 + 20,
         radius: 10,
         color: Color::YELLOW,
+    });
+}
+
+// --- Barre de vie ---
+#[system]
+pub fn render_hud_health(
+    #[resource] hud_queue: &mut HudQueue,
+    #[resource] player_health: &PlayerHealth,
+) {
+    let padding = 16;
+    let bar_w = 200;
+    let bar_h = 18;
+    let hp_x = padding;
+    let hp_y = padding;
+
+    let hp_ratio = (player_health.hp as f32 / player_health.max_hp as f32).clamp(0.0, 1.0);
+    let filled_w = (bar_w as f32 * hp_ratio) as i32;
+
+    let bar_color = if hp_ratio < 0.25 {
+        Color::RED
+    } else if hp_ratio < 0.5 {
+        Color::ORANGE
+    } else {
+        Color::GREEN
+    };
+
+    // Outline
+    hud_queue.0.push(HudCommand::Rectangle {
+        x: hp_x - 2, y: hp_y - 2,
+        w: bar_w + 4, h: bar_h + 4,
+        color: Color::BLACK,
+    });
+    // Fond
+    hud_queue.0.push(HudCommand::Rectangle {
+        x: hp_x, y: hp_y,
+        w: bar_w, h: bar_h,
+        color: Color { r: 40, g: 40, b: 40, a: 255 },
+    });
+    // Barre remplie
+    hud_queue.0.push(HudCommand::Rectangle {
+        x: hp_x, y: hp_y,
+        w: filled_w, h: bar_h,
+        color: bar_color,
+    });
+    // Segments
+    let segment_count = 10;
+    let segment_w = bar_w / segment_count;
+    for i in 1..segment_count {
+        hud_queue.0.push(HudCommand::Rectangle {
+            x: hp_x + i * segment_w,
+            y: hp_y,
+            w: 1,
+            h: bar_h,
+            color: Color { r: 0, g: 0, b: 0, a: 80 },
+        });
+    }
+    // Texte
+    hud_queue.0.push(HudCommand::Text {
+        text: format!("{}/{}", player_health.hp, player_health.max_hp),
+        x: hp_x + bar_w + 8,
+        y: hp_y,
+        font_size: 16,
+        spacing: 1.0,
+        color: Color::WHITE,
+    });
+}
+
+// --- Gold ---
+#[system]
+pub fn render_hud_gold(
+    #[resource] hud_queue: &mut HudQueue,
+    #[resource] gold: &Gold,
+) {
+    let padding = 16;
+    let bar_h = 18;
+    let gold_x = padding;
+    let gold_y = padding + bar_h + 12;
+
+    // Outline icône
+    hud_queue.0.push(HudCommand::Circle {
+        x: gold_x + 8,
+        y: gold_y + 8,
+        radius: 8.0,
+        color: Color::BLACK,
+    });
+    // Icône pièce
+    hud_queue.0.push(HudCommand::Circle {
+        x: gold_x + 8,
+        y: gold_y + 8,
+        radius: 6.0,
+        color: Color { r: 255, g: 200, b: 0, a: 255 },
+    });
+    // Texte
+    hud_queue.0.push(HudCommand::Text {
+        text: format!("{} G", gold.0),
+        x: gold_x + 22,
+        y: gold_y,
+        font_size: 16,
+        spacing: 1.0,
+        color: Color { r: 255, g: 200, b: 0, a: 255 },
+    });
+}
+
+// --- Vague ---
+#[system]
+pub fn render_hud_wave(
+    #[resource] hud_queue: &mut HudQueue,
+    #[resource] wave_manager: &WaveManager,
+) {
+    let wave_text = format!(
+        "VAGUE {}  |  {} ennemi(s)",
+        wave_manager.current_wave + 1,
+        wave_manager.enemies_remaining
+    );
+
+    // Ombre portée
+    hud_queue.0.push(HudCommand::Text {
+        text: wave_text.clone(),
+        x: 17,
+        y: 17,
+        font_size: 18,
+        spacing: 1.0,
+        color: Color::BLACK,
+    });
+    // Texte principal
+    hud_queue.0.push(HudCommand::Text {
+        text: wave_text,
+        x: 16,
+        y: 16,
+        font_size: 18,
+        spacing: 1.0,
+        color: Color::WHITE,
     });
 }
