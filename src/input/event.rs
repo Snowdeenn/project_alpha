@@ -3,7 +3,9 @@ use raylib::math::Vector2;
 #[derive(Debug, PartialEq)]
 pub enum InputEvent {
     Dash,
-    Attack,
+    Shop,
+    LeftClick,
+    RightClick,
 }
 
 #[derive(Debug, Default)]
