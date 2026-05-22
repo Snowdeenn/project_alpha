@@ -1,4 +1,6 @@
-use core::f64;
+use crate::input::event::InputQueue;
+use crate::event::{DamageQueue, EnemyDiedQueue};
+use crate::eco::{CoinSpawnQueue, PickupQueue};
 
 use legion::EntityStore;
 use legion::{Entity, world::SubWorld};
@@ -20,6 +22,12 @@ pub struct Resolution {
 pub struct PlayerPos {
     pub x: f64,
     pub y: f64,
+}
+
+#[derive(Debug)]
+pub struct PlayerHealth {
+    pub hp: f64,
+    pub max_hp: f64,
 }
 
 pub fn aabb_overlap(
@@ -48,7 +56,6 @@ const MIN_BOUNCE: f64 = 50.0;
 pub fn apply_resolution(world: &mut SubWorld, res: &Resolution) {
     let epsilon = 0.2;
 
-
     if let Ok(mut entry_a) = world.entry_mut(res.ent_a) {
         if res.axis {
             if let Ok(pos) = entry_a.get_component_mut::<Position<f64>>() {
@@ -73,7 +80,7 @@ pub fn apply_resolution(world: &mut SubWorld, res: &Resolution) {
                 pos.x -= (res.overlap_x / 2.0 + epsilon) * res.dir_x;
             }
             if let Ok(velo) = entry_b.get_component_mut::<Velocity<f64>>() {
-                velo.dx = velo.dx.abs() * -res.dir_x; 
+                velo.dx = velo.dx.abs() * -res.dir_x;
             }
         } else {
             if let Ok(pos) = entry_b.get_component_mut::<Position<f64>>() {
@@ -83,5 +90,23 @@ pub fn apply_resolution(world: &mut SubWorld, res: &Resolution) {
                 velo.dy = velo.dy.abs() * -res.dir_y;
             }
         }
+    }
+}
+
+pub fn clear_resource_queues(resources: &mut legion::Resources) {
+    if let Some(mut queue) = resources.get_mut::<InputQueue>() {
+        queue.0.clear();
+    }
+    if let Some(mut queue) = resources.get_mut::<DamageQueue>() {
+        queue.0.clear();
+    }
+    if let Some(mut queue) = resources.get_mut::<EnemyDiedQueue>() {
+        queue.0.clear();
+    }
+    if let Some(mut queue) = resources.get_mut::<CoinSpawnQueue>() {
+        queue.0.clear();
+    }
+    if let Some(mut queue) = resources.get_mut::<PickupQueue>() {
+        queue.0.clear();
     }
 }
