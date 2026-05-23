@@ -1,10 +1,12 @@
 use std::time::Duration;
+use crate::shop::helper::ShopItem;
 
 use num_traits::Num;
 
 pub struct Player;
 pub struct IA;
 pub struct Coin;
+pub struct Shop;
 
 #[derive(Debug, Default)]
 pub struct Position<T: Num> {
@@ -49,3 +51,7 @@ pub struct Health {
 pub struct Active(pub bool);
 
 pub struct CoinValue(pub u32); 
+pub struct ShopItems {
+    pub items: Vec<Option<ShopItem>>,
+}
+pub struct NeedRestock;
