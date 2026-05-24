@@ -14,20 +14,19 @@ pub mod helper;
 
 #[system(for_each)]
 #[filter(component::<Shop>())]
-pub fn open_close(
+pub fn open_close_shop(
     entity: &Entity,
     active: &mut Active,
-    #[resource] i_queue: &InputQueue,
-    #[resource] game_state: &mut GameState,
+    #[resource] game_state: &GameState,
     commands: &mut CommandBuffer,
 ) {
-    if i_queue.0.contains(&InputEvent::Shop) && *game_state == GameState::Playing {
-        active.0 = true;
-        *game_state = GameState::Shop;
-        commands.add_component(*entity, NeedRestock);
-    } else if i_queue.0.contains(&InputEvent::Shop) && *game_state == GameState::Shop {
+    if *game_state == GameState::Shop {
+        if !active.0 {
+            active.0 = true;
+            commands.add_component(*entity, NeedRestock);
+        }
+    } else if *game_state == GameState::Playing {
         active.0 = false;
-        *game_state = GameState::Playing;
     }
 }
 

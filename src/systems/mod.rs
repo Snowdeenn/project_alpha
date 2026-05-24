@@ -11,6 +11,7 @@ use legion::world::SubWorld;
 use legion::*;
 use num_traits::ToPrimitive;
 use raylib::prelude::*;
+use crate::GameState;
 
 const ACCEL: f64 = 1500.0;
 // todo: Ajouter plusieurs friction en fonction
@@ -649,4 +650,17 @@ pub fn render_hud_wave(
         spacing: 1.0,
         color: Color::WHITE,
     });
+}
+
+#[system]
+pub fn update_game_state(
+    #[resource] i_queue: &InputQueue,
+    #[resource] game_state: &mut GameState,
+) {
+    if i_queue.0.contains(&InputEvent::Shop) {
+        *game_state = match *game_state {
+            GameState::Playing => GameState::Shop,
+            GameState::Shop => GameState::Playing,
+        };
+    }
 }

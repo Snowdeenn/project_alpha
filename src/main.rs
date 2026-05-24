@@ -23,13 +23,8 @@ use crate::{
     }, config::MAX_ENEMIES, event::{DamageQueue, EnemyDiedQueue}, helper::{PlayerHealth, PlayerPos}, input::{
         InputReader,
         event::{InputQueue, InputState},
-    }, renderer::{HudQueue, RenderQueue, Renderer}, shop::{ShopManager, open_close_system, render_shop_system, restock_shop_system}, systems::{
-        apply_damage_system, apply_pickup_system, coin_pickup_system, coin_push_to_queue_system,
-        coin_spawn_system, collide_arena_system, collide_system, dash_system, friction_system,
-        health_system, ia_seek_system, render_coin_system, render_hud_gold_system,
-        render_hud_health_system, render_hud_wave_system, render_oponent_system,
-        render_player_system, update_camera_system, update_player_pos_system,
-        update_position_system, update_velocity_system, wave_update_system,
+    }, renderer::{HudQueue, RenderQueue, Renderer}, shop::{ShopManager, open_close_shop_system, render_shop_system, restock_shop_system}, systems::{
+        apply_damage_system, apply_pickup_system, coin_pickup_system, coin_push_to_queue_system, coin_spawn_system, collide_arena_system, collide_system, dash_system, friction_system, health_system, ia_seek_system, render_coin_system, render_hud_gold_system, render_hud_health_system, render_hud_wave_system, render_oponent_system, render_player_system, update_camera_system, update_game_state_system, update_player_pos_system, update_position_system, update_velocity_system, wave_update_system
     }, wave::{EnemyPool, WaveConfig, WaveConfigs, WaveManager, WaveState}
     
 };
@@ -57,6 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     resources.insert(DamageQueue(vec![]));
 
     let mut game_schedule = Schedule::builder()
+        .add_system(update_game_state_system())
         .add_system(friction_system())
         .add_system(update_velocity_system())
         .add_system(dash_system())
@@ -82,7 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     let mut shop_schedule = Schedule::builder()
-        .add_system(open_close_system())
+        .add_system(open_close_shop_system())
         .add_system(restock_shop_system())
         .add_system(render_shop_system())
         .build();
@@ -191,6 +187,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(mut res_gm) = resources.get_mut::<GameState>() {
             *res_gm = game_state;
         }
+        
         match game_state {
             GameState::Playing => {
                 game_schedule.execute(&mut world, &mut resources);
@@ -201,6 +198,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ShopManager::update(&mut world, &mut resources, &mut command_buffer);
             }
         }
+        
         renderer.render_frame(&mut resources);
 
         // fin de frame — vider les queues
