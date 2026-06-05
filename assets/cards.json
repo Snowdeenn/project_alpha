@@ -1,0 +1,66 @@
+[
+  {
+    "name": "Seringue d'Adrénaline",
+    "description": "Augmente de manière permanente votre vitesse de déplacement.",
+    "price": 35,
+    "rarity": "Common",
+    "effect_type": "Speed",
+    "effect_value": 1.2
+  },
+  {
+    "name": "Bottes Tempête",
+    "description": "Ffilez comme l'éclair. Bonus de vitesse majeur.",
+    "price": 90,
+    "rarity": "Epic",
+    "effect_type": "Speed",
+    "effect_value": 3.0
+  },
+  {
+    "name": "Cœur de Phénix",
+    "description": "Restaure instantanément une partie de vos points de vie.",
+    "price": 25,
+    "rarity": "Common",
+    "effect_type": "Health",
+    "effect_value": 40.0
+  },
+  {
+    "name": "Élixir d'Immortalité",
+    "description": "Une rasade géante qui vous rend une quantité colossale de PV.",
+    "price": 120,
+    "rarity": "Legendary",
+    "effect_type": "Health",
+    "effect_value": 200.0
+  },
+  {
+    "name": "Munitions Instables",
+    "description": "Vos attaques infligent plus de dégâts.",
+    "price": 50,
+    "rarity": "Rare",
+    "effect_type": "Damage",
+    "effect_value": 12.0
+  },
+  {
+    "name": "Pacte de Sang",
+    "description": "Sacrifiez votre bourse pour une augmentation massive des dégâts.",
+    "price": 150,
+    "rarity": "Legendary",
+    "effect_type": "Damage",
+    "effect_value": 50.0
+  },
+  {
+    "name": "Pièce du Farfadet",
+    "description": "Générez un petit pactole d'or instantanément.",
+    "price": 30,
+    "rarity": "Common",
+    "effect_type": "Gold",
+    "effect_value": 75.0
+  },
+  {
+    "name": "Contrat de Midas",
+    "description": "L'or coule à flots. Reçu d'or massif immédiat.",
+    "price": 100,
+    "rarity": "Rare",
+    "effect_type": "Gold",
+    "effect_value": 250.0
+  }
+]

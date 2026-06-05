@@ -172,7 +172,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     resources.insert(eco::PickupQueue(vec![]));
     resources.insert(eco::Gold(0));
 
-    let game_state = GameState::Playing;
+    let game_state = GameState::Shop;
     resources.insert(game_state);
 
     while !renderer.rl.window_should_close() {

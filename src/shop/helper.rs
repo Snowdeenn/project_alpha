@@ -1,11 +1,19 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum Rarity {
+    Common,
+    Rare,
+    Epic,
+    Legendary,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShopItem {
-    pub id: u32,
     pub name: String,
+    pub description: String, // Nouvelle donnée pour ton HUD !
     pub price: u32,
-    pub description: String,
+    pub rarity: Rarity,      // Nouvelle donnée pour la couleur de la carte !
     pub effect_type: EffectType,
     pub effect_value: f64,
 }
